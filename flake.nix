@@ -40,6 +40,7 @@
                       type = types.submodule (ouroSubmodule: {
                         options = {
                           enable = lib.mkEnableOption "ouro module subsystem for vpnNamespaces";
+                          ipv6 = lib.mkEnableOption "IPv6 VPN peer firewall rules";
                           gateway = lib.mkOption {
                             type = types.str;
                             default = "10.2.0.1";
@@ -156,7 +157,7 @@
                     in {
                       ExecStart = ''
                         ${lib.getExe' pkgs.iproute2 "ip"} netns exec ${vpnNamespace} \
-                          ${lib.getExe pkgs.bashNonInteractive} -c "${lib.getExe ouro} --gateway ${gateway} --vpn-interface ${interface} ${ouroArgs}"
+                          ${lib.getExe pkgs.bashNonInteractive} -c "${lib.getExe ouro} --gateway ${gateway} --vpn-interface ${interface} ${lib.optionalString ouroConfig.ipv6 "--ipv6 "}${ouroArgs}"
                       '';
                       Restart = "always";
                     };

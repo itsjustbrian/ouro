@@ -54,6 +54,7 @@ vpnNamespaces = {
 
     ouro = {
       enable = true;            # default = false
+      ipv6 = true;              # optional: allow mapped peer ports over IPv6
       gateway = "10.2.0.1";     # default = "10.2.0.1"
       interface = "prtr0";      # default = (vpnNamespace name above) + "0"
 
@@ -79,6 +80,14 @@ as securely stored secrets. Restrict unauthenticated RPC to trusted clients.
 
 The ouro service starts after Transmission and restarts with it, so the current
 forwarded port is reapplied when Transmission restarts.
+
+With `ipv6 = true`, ouro opens the mapped peer ports on the VPN interface for
+both address families. This only configures the namespace firewall; the VPN
+provider must also permit inbound IPv6 for the port to be reachable. Ouro uses
+its own firewall chains and flushes them on startup and shutdown. Rules created
+directly in INPUT by older versions are not automatically removed because they
+cannot be distinguished safely from user-managed rules; review them when
+upgrading.
 
 For Slskd:
 

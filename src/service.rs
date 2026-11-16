@@ -5,9 +5,13 @@ use tracing::{debug, error, info};
 
 use crate::{
     GlobalArgs,
-    firewall::manage_firewall,
+    firewall::{manage_firewall, prepare_firewall},
     port_manager::{Ports, map_ports},
 };
+
+fn ports_changed(current: &Ports, new: &Ports) -> bool {
+    current != new
+}
 
 pub(crate) trait Service {
     const NAME: &str;
@@ -29,7 +33,12 @@ pub(crate) trait Service {
     // FIXME: ugly
     fn current_ports(&mut self) -> &mut Ports;
 
-    async fn apply_ports(&mut self, interface: &str, ports: &Ports) -> eyre::Result<()> {
+    async fn apply_ports(
+        &mut self,
+        interface: &str,
+        ipv6: bool,
+        ports: &Ports,
+    ) -> eyre::Result<()> {
         let old_ports = self.current_ports();
 
         // Don't do anything if ports haven't changed
@@ -39,7 +48,7 @@ pub(crate) trait Service {
         }
 
         // First handle firewall
-        manage_firewall(interface, Some(ports), Some(old_ports)).await?;
+        manage_firewall(interface, ipv6, Some(ports)).await?;
 
         // Then update service
         self.update(ports).await?;
@@ -55,6 +64,7 @@ pub(crate) trait Service {
         args: &GlobalArgs,
         mut shutdown: broadcast::Receiver<()>,
     ) -> eyre::Result<()> {
+        prepare_firewall(&args.vpn_interface, args.ipv6).await?;
         let client = natpmp::new_tokio_natpmp_with(args.gateway).await?;
         let mut interval = tokio::time::interval(Duration::from_secs(45));
 
@@ -66,7 +76,7 @@ pub(crate) trait Service {
             initial_ports.tcp, initial_ports.udp
         );
 
-        self.apply_ports(&args.vpn_interface, &initial_ports)
+        self.apply_ports(&args.vpn_interface, args.ipv6, &initial_ports)
             .await?;
 
         loop {
@@ -75,17 +85,18 @@ pub(crate) trait Service {
                     // Just refresh the NAT-PMP mapping without reconfiguring
                     match map_ports(&client).await {
                         Ok(new_ports) => {
+                            let current_ports = self.current_ports().clone();
                             info!(
-                                current_tcp = initial_ports.tcp,
-                                current_udp = initial_ports.udp,
+                                current_tcp = current_ports.tcp,
+                                current_udp = current_ports.udp,
                                 new_tcp = new_ports.tcp,
                                 new_udp = new_ports.udp,
                                 "Checking port mapping"
                             );
 
-                            if new_ports != initial_ports {
+                            if ports_changed(&current_ports, &new_ports) {
                                 info!("Ports changed, reconfiguring service");
-                                self.apply_ports(&args.vpn_interface, &new_ports).await?;
+                                self.apply_ports(&args.vpn_interface, args.ipv6, &new_ports).await?;
                             } else {
                                 debug!("Ports unchanged, keeping current configuration");
                             }
@@ -98,13 +109,33 @@ pub(crate) trait Service {
                 }
                 _ = shutdown.recv() => {
                     info!("Shutting down...");
-                    manage_firewall(&args.vpn_interface, None, Some(self.current_ports())).await?;
+                    manage_firewall(&args.vpn_interface, args.ipv6, None).await?;
                     self.cleanup().await?;
                     break;
                 }
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recognizes_port_changes_including_return_to_initial_port() {
+        let initial = Ports {
+            tcp: 1000,
+            udp: 1000,
+        };
+        let later = Ports {
+            tcp: 2000,
+            udp: 2000,
+        };
+        assert!(!ports_changed(&initial, &initial));
+        assert!(ports_changed(&initial, &later));
+        assert!(ports_changed(&later, &initial));
     }
 }
 
@@ -138,11 +169,16 @@ impl Service for ServiceData {
         }
     }
 
-    async fn apply_ports(&mut self, interface: &str, ports: &Ports) -> eyre::Result<()> {
+    async fn apply_ports(
+        &mut self,
+        interface: &str,
+        ipv6: bool,
+        ports: &Ports,
+    ) -> eyre::Result<()> {
         match self {
-            ServiceData::Slskd(slskd) => slskd.apply_ports(interface, ports).await,
+            ServiceData::Slskd(slskd) => slskd.apply_ports(interface, ipv6, ports).await,
             ServiceData::Transmission(transmission) => {
-                transmission.apply_ports(interface, ports).await
+                transmission.apply_ports(interface, ipv6, ports).await
             }
         }
     }
@@ -239,9 +275,14 @@ impl Service for Transmission {
         self.rpc_credentials
             .as_ref()
             .map(|rpc_credentials| cmd.args(["--auth", &rpc_credentials.to_string()]));
-        cmd.args(["--port", &format!("{}", ports.tcp)])
+        let status = cmd
+            .args(["--port", &format!("{}", ports.tcp)])
             .status()
             .await?;
+
+        if !status.success() {
+            eyre::bail!("transmission-remote failed with {status}");
+        }
 
         Ok(())
     }

@@ -29,6 +29,10 @@ pub struct GlobalArgs {
     /// VPN interface name
     #[arg(long, default_value = "proton0")]
     pub vpn_interface: String,
+
+    /// Allow the forwarded peer ports on the IPv6 VPN interface as well
+    #[arg(long)]
+    pub ipv6: bool,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -87,10 +91,14 @@ async fn main() -> eyre::Result<()> {
     let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
 
     tokio::spawn(async move {
-        if let Ok(()) = tokio::signal::ctrl_c().await {
-            info!("Received shutdown signal");
-            shutdown_tx.send(()).ok();
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {},
+            _ = sigterm.recv() => {},
         }
+        info!("Received shutdown signal");
+        shutdown_tx.send(()).ok();
     });
 
     service.run(&args.global_args, shutdown_rx).await?;
