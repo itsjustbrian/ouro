@@ -75,10 +75,12 @@
                                 #       to allow loading from files
                                 # rpc_file = ...
                                 RPC_USER = lib.mkOption {
-                                  type = types.str;
+                                  type = types.nullOr types.str;
+                                  default = null;
                                 };
                                 RPC_PASS = lib.mkOption {
-                                  type = types.str;
+                                  type = types.nullOr types.str;
+                                  default = null;
                                 };
                                 ADDRESS = lib.mkOption {
                                   type = types.str;
@@ -138,7 +140,12 @@
                       ouroArgs = if ouroConfig.slskd.enable then
                         "slskd"
                       else if ouroConfig.transmission.enable then
-                        "transmission --rpc-user ${ouroConfig.transmission.RPC_USER} --rpc-pass ${ouroConfig.transmission.RPC_PASS} --address ${ouroConfig.transmission.ADDRESS}"
+                        if (ouroConfig.transmission.RPC_USER == null) != (ouroConfig.transmission.RPC_PASS == null) then
+                          throw "Both RPC_USER and RPC_PASS must be set, or both left unset."
+                        else
+                          "transmission --address ${ouroConfig.transmission.ADDRESS}"
+                          + lib.optionalString (ouroConfig.transmission.RPC_USER != null)
+                            " --rpc-user ${ouroConfig.transmission.RPC_USER} --rpc-pass ${ouroConfig.transmission.RPC_PASS}"
                       else
                         throw "Either `slskd` or `transmission` need to be enabled!";
                     in {

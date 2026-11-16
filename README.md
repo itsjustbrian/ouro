@@ -64,13 +64,18 @@ vpnNamespaces = {
         # TODO
         # rpc_file = config.age.secrets."ouro_transmission_creds";
 
-        RPC_USER="USER";        # required
-        RPC_PASS="PASS";        # required
+        # RPC_USER = "USER";    # optional; set both for authenticated RPC
+        # RPC_PASS = "PASS";
       };
     };
   };
 };
 ```
+
+Leave both `RPC_USER` and `RPC_PASS` unset when Transmission RPC authentication
+is disabled. If using authentication, both must be set. These values are placed
+in Nix-generated service commands and process arguments, so do not treat them
+as securely stored secrets. Restrict unauthenticated RPC to trusted clients.
 
 For Slskd:
 
