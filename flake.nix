@@ -135,7 +135,7 @@
                     ];
                     serviceConfig = let
                       inherit
-                        (flakePartsConfig.allSystems.${pkgs.hostPlatform.system}.packages)
+                        (flakePartsConfig.allSystems.${pkgs.stdenv.hostPlatform.system}.packages)
                         ouro
                         ;
                       inherit
