@@ -115,8 +115,13 @@
                     description = ''
                       Ouro stuff for ${vpnNamespace}
                     '';
-                    wantedBy = ["multi-user.target"];
-                    after = [ "slskd.service" "${vpnNamespace}.service" ];
+                    wantedBy =
+                      if ouroConfig.transmission.enable && !ouroConfig.slskd.enable
+                      then ["transmission.service"]
+                      else ["multi-user.target"];
+                    after = ["slskd.service" "${vpnNamespace}.service"]
+                      ++ lib.optional (ouroConfig.transmission.enable && !ouroConfig.slskd.enable) "transmission.service";
+                    partOf = lib.optional (ouroConfig.transmission.enable && !ouroConfig.slskd.enable) "transmission.service";
                     environment = {
                       # TODO(reo101): toggle with a module option
                       "RUST_LOG" = "debug";

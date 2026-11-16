@@ -77,6 +77,9 @@ is disabled. If using authentication, both must be set. These values are placed
 in Nix-generated service commands and process arguments, so do not treat them
 as securely stored secrets. Restrict unauthenticated RPC to trusted clients.
 
+The ouro service starts after Transmission and restarts with it, so the current
+forwarded port is reapplied when Transmission restarts.
+
 For Slskd:
 
 ```nix
